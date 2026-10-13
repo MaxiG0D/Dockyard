@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// Draws folder icons: a rounded, tinted tile showing a 3×3 grid of the folder's contents,
@@ -69,9 +70,14 @@ enum IconRenderer {
         return isDirectory.boolValue || ext == "icns" || !isPicture
     }
 
+    /// Apple's app icon shape: a continuous-corner ("squircle") rounded square. Matching it closely
+    /// keeps macOS from shrinking the icon onto a gray tile, as it does with nonconforming icons.
     private static func tilePath(_ body: CGRect) -> NSBezierPath {
-        let radius = body.width * 0.2237
-        return NSBezierPath(roundedRect: body, xRadius: radius, yRadius: radius)
+        squircle(body, radius: body.width * 0.2237)
+    }
+
+    private static func squircle(_ rect: CGRect, radius: CGFloat) -> NSBezierPath {
+        NSBezierPath(cgPath: RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect).cgPath)
     }
 
     private static func drawTile(in body: CGRect, color base: NSColor, scale s: CGFloat, shadow: Bool) {
@@ -99,7 +105,7 @@ enum IconRenderer {
         NSGraphicsContext.saveGraphicsState()
         tilePath(body).addClip()
         let inset = s * 0.006
-        let rim = NSBezierPath(roundedRect: body.insetBy(dx: inset, dy: inset), xRadius: radius - inset, yRadius: radius - inset)
+        let rim = squircle(body.insetBy(dx: inset, dy: inset), radius: radius - inset)
         rim.lineWidth = s * 0.012
         NSColor.white.withAlphaComponent(0.28).setStroke()
         rim.stroke()

@@ -44,6 +44,9 @@ final class DockyardTilePlugIn: NSObject, NSDockTilePlugIn {
             guard let self, note.object as? String == self.folderID else { return }
             self.showCurrentIcon()
         }
+        // Draw the icon ourselves from the start: the Dock would otherwise show macOS's version of
+        // it, which since macOS 26 may be shrunk onto a gray tile.
+        showCurrentIcon()
         // Ask Dockyard for the current total (it answers if it's running).
         center.postNotificationName(NSNotification.Name("com.maxgariepy.Dockyard.tileBadgeRequest"),
                                     object: folderID, userInfo: nil, deliverImmediately: true)
