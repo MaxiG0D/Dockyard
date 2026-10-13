@@ -29,6 +29,7 @@ Requires macOS 14 Sonoma or later. Runs natively on Apple Silicon and Intel.
 - Drop files onto a folder's Dock icon to add them.
 - Click a folder's icon in Settings to change it: its contents, an app from inside it, an SF Symbol, an emoji or an image.
   A small Dockyard badge marks folder icons in the Dock (you can turn it off).
+- Running apps get a Dock-style dot in popups. Right-click one to Show, Hide or Quit it.
 - ⌘-click an item in a popup to reveal it in Finder; ← or Delete goes back from a nested folder.
 
 ## Features

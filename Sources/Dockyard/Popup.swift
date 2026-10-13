@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum PopupEdge { case bottom, left, right, top }
 
@@ -132,6 +133,11 @@ final class PopupController {
         } else {
             NSWorkspace.shared.open(url)
         }
+        if store.appearance.closeAfterOpening { close() }
+    }
+
+    /// Closes after acting on an item, when the "close after opening" setting is on.
+    func closeIfNeeded() {
         if store.appearance.closeAfterOpening { close() }
     }
 
@@ -448,6 +454,7 @@ private struct ItemCell: View {
     let item: FolderItem
     @ObservedObject var store: Store
     @ObservedObject private var badges = BadgeMonitor.shared
+    @ObservedObject private var running = RunningApps.shared
     let controller: PopupController
     let folderID: UUID
     let layout: PopupLayout
@@ -461,6 +468,15 @@ private struct ItemCell: View {
                 .interpolation(.high)
                 .frame(width: size, height: size)
                 .opacity(item.exists ? 1 : 0.4)
+                .overlay(alignment: .bottom) {
+                    if isRunning && running.showsIndicators {
+                        // Dock-style "open" dot, just under the visible icon.
+                        Circle()
+                            .fill(.primary.opacity(0.75))
+                            .frame(width: 4, height: 4)
+                            .offset(y: 3)
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     if let badge = badgeText {
                         // Sits on the corner of the visible icon (app icons have ~10% padding).
@@ -484,11 +500,18 @@ private struct ItemCell: View {
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
         .onTapGesture { controller.open(item) }
-        .onDrag { item.url.map { NSItemProvider(object: $0 as NSURL) } ?? NSItemProvider() }
+        .onDrag { dragProvider }
         .help(item.path ?? store.displayName(for: item))
         .contextMenu {
-            if item.linkedFolderID == nil {
-                Button("Open") { controller.open(item) }
+            if let path = item.path {
+                if isRunning {
+                    Button("Show") { running.show(path); controller.closeIfNeeded() }
+                    Button("Hide") { running.hide(path) }
+                    Button("Quit") { running.quit(path) }
+                } else {
+                    Button("Open") { controller.open(item) }
+                }
+                Divider()
                 Button("Show in Finder") {
                     if let url = item.url { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 }
@@ -496,6 +519,24 @@ private struct ItemCell: View {
             }
             Button("Remove from Folder") { store.removeItems([item.id], from: folderID) }
         }
+    }
+
+    private var isRunning: Bool {
+        item.path.map(running.isRunning) ?? false
+    }
+
+    /// The item's real location. A file-backed provider (e.g. `NSItemProvider(object: NSURL)`)
+    /// would make SwiftUI drag a temporary copy instead.
+    private var dragProvider: NSItemProvider {
+        let provider = NSItemProvider()
+        if let url = item.url {
+            provider.suggestedName = url.deletingPathExtension().lastPathComponent
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier, visibility: .all) { done in
+                done(url.dataRepresentation, nil)
+                return nil
+            }
+        }
+        return provider
     }
 
     private var badgeText: String? {
