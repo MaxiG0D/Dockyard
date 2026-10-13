@@ -56,11 +56,23 @@ for arch in "${PLUGIN_ARCHS[@]}"; do
 done
 lipo -create "${SLICES[@]}" -output "$PLUGIN/Contents/MacOS/DockyardTile"
 cp Plugin/Info.plist "$PLUGIN/Contents/Info.plist"
+
+# Sparkle (automatic updates), from SwiftPM's binary artifact.
+SPARKLE_SRC=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+SPARKLE="$STAGED/Contents/Frameworks/Sparkle.framework"
+mkdir -p "$STAGED/Contents/Frameworks"
+ditto "$SPARKLE_SRC" "$SPARKLE"
 cp Resources/Info.plist "$STAGED/Contents/Info.plist"
 "$STAGED/Contents/MacOS/Dockyard" --render-app-icon "$STAGED/Contents/Resources/AppIcon.icns"
 xattr -cr "$STAGED"
 codesign "${SIGN_FLAGS[@]}" "$STAGED/Contents/Helpers/DockyardStub"
 codesign "${SIGN_FLAGS[@]}" "$PLUGIN"
+# Sparkle's nested code, innermost first, as Sparkle's documentation prescribes.
+codesign "${SIGN_FLAGS[@]}" "$SPARKLE/Versions/B/XPCServices/Installer.xpc"
+codesign "${SIGN_FLAGS[@]}" --preserve-metadata=entitlements "$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
+codesign "${SIGN_FLAGS[@]}" "$SPARKLE/Versions/B/Autoupdate"
+codesign "${SIGN_FLAGS[@]}" "$SPARKLE/Versions/B/Updater.app"
+codesign "${SIGN_FLAGS[@]}" "$SPARKLE"
 codesign "${SIGN_FLAGS[@]}" "$STAGED"
 codesign --verify --strict "$STAGED"
 

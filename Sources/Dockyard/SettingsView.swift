@@ -576,6 +576,7 @@ private struct ItemRow: View {
 private struct AppearanceView: View {
     @ObservedObject var store: Store
     @ObservedObject private var badges = BadgeMonitor.shared
+    @ObservedObject private var updater = Updater.shared
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
@@ -645,6 +646,24 @@ private struct AppearanceView: View {
             .onAppear { badges.refreshTrust() }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 badges.refreshTrust()
+            }
+
+            Section {
+                Toggle("Automatically check for updates", isOn: Binding(
+                    get: { updater.automaticallyChecksForUpdates },
+                    set: { updater.automaticallyChecksForUpdates = $0 }))
+                Toggle("Automatically download and install updates", isOn: Binding(
+                    get: { updater.automaticallyDownloadsUpdates },
+                    set: { updater.automaticallyDownloadsUpdates = $0 }))
+                    .disabled(!updater.automaticallyChecksForUpdates)
+                HStack {
+                    Text(Updater.versionDescription).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Check for Updates…") { updater.checkForUpdates() }
+                        .disabled(!updater.canCheckForUpdates)
+                }
+            } header: {
+                Text("Updates")
             }
 
             Section("General") {

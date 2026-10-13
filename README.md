@@ -15,6 +15,8 @@ iOS-style folders for the macOS Dock. Group apps, files, folders and disks into 
 2. Move **Dockyard.app** to your Applications folder and open it.
 
 Dockyard is signed with a Developer ID and notarized by Apple, so it opens without security warnings.
+From version 1.3 on, Dockyard updates itself (powered by [Sparkle](https://sparkle-project.org)).
+You can turn automatic checks off, or check manually, in Settings or the menu bar menu.
 
 Requires macOS 14 Sonoma or later. Runs natively on Apple Silicon and Intel.
 
@@ -88,7 +90,15 @@ Bump `CFBundleShortVersionString` and `CFBundleVersion` in `Resources/Info.plist
 ```
 
 This builds the universal app, signs it with the Developer ID certificate, notarizes and staples it,
-tags `v<version>`, pushes, and creates a GitHub release with the zip attached. Notarization needs a
+signs the zip for Sparkle and writes `appcast.xml`, tags `v<version>`, pushes, and creates a GitHub
+release with the zip and appcast attached. Installed copies find the update through
+`releases/latest/download/appcast.xml`. Put release notes for the update window in
+`ReleaseNotes/<version>.html` (otherwise Sparkle links to the GitHub release page).
+
+Sparkle verifies updates with an EdDSA key whose private half lives in the Keychain (account
+`dockyard`, created with `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account dockyard`).
+Back it up with `generate_keys --account dockyard -x <file>`: without it, installed copies can't be
+updated. Notarization needs a
 keychain profile, created once with:
 
 ```bash
