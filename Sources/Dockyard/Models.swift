@@ -122,6 +122,7 @@ struct Appearance: Codable, Equatable {
     var closeAfterOpening = true
     var iconShowsContents = true
     var animationSpeed: PopupAnimation = .standard
+    var showBadges = true
     var dockBadge = true
 
     init() {}
@@ -141,6 +142,7 @@ struct Appearance: Codable, Equatable {
         iconShowsContents = try c.decodeIfPresent(Bool.self, forKey: .iconShowsContents) ?? d.iconShowsContents
         dockBadge = try c.decodeIfPresent(Bool.self, forKey: .dockBadge) ?? d.dockBadge
         animationSpeed = (try? c.decodeIfPresent(PopupAnimation.self, forKey: .animationSpeed)) ?? d.animationSpeed
+        showBadges = try c.decodeIfPresent(Bool.self, forKey: .showBadges) ?? d.showBadges
     }
 
     private static let defaults = Appearance()

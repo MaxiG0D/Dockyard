@@ -1,24 +1,35 @@
 #!/bin/bash
 # Builds build/Dockyard.app.
 #   --universal     build for both Apple Silicon and Intel (used for releases)
-#   --developer-id  sign with the Developer ID certificate and hardened runtime (needed for notarization)
+#   --developer-id  require the Developer ID certificate, with a secure timestamp (needed for notarization)
 #   --install       copy the app to /Applications and launch it
 set -euo pipefail
 cd "$(dirname "$0")"
 
 ARCH_FLAGS=()
 INSTALL=0
-SIGN_FLAGS=(--force --sign -)
+IDENTITY="${DOCKYARD_SIGN_IDENTITY:-Developer ID Application: MAXIME GARIEPY (NZN9M2VV5J)}"
+# Sign local builds with the Developer ID when it's installed: permissions macOS grants
+# (e.g. Accessibility, for notification badges) survive rebuilds only with a stable identity.
+# Anyone else building from source gets an ad-hoc signature.
+if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY"; then
+    SIGN_FLAGS=(--force --sign "$IDENTITY" --options runtime --timestamp=none)
+else
+    SIGN_FLAGS=(--force --sign -)
+fi
 for arg in "$@"; do
     case "$arg" in
         --universal) ARCH_FLAGS=(--arch arm64 --arch x86_64) ;;
         --install) INSTALL=1 ;;
-        --developer-id)
-            IDENTITY="${DOCKYARD_SIGN_IDENTITY:-Developer ID Application: MAXIME GARIEPY (NZN9M2VV5J)}"
-            SIGN_FLAGS=(--force --sign "$IDENTITY" --options runtime --timestamp) ;;
+        --developer-id) DEVELOPER_ID=1 ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
+
+if [[ ${DEVELOPER_ID:-0} == 1 ]]; then
+    # Releases: Developer ID with a secure timestamp, as notarization requires.
+    SIGN_FLAGS=(--force --sign "$IDENTITY" --options runtime --timestamp)
+fi
 
 swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"}
 BIN="$(swift build -c release ${ARCH_FLAGS[@]+"${ARCH_FLAGS[@]}"} --show-bin-path)"

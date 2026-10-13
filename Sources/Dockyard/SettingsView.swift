@@ -575,6 +575,7 @@ private struct ItemRow: View {
 
 private struct AppearanceView: View {
     @ObservedObject var store: Store
+    @ObservedObject private var badges = BadgeMonitor.shared
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
 
@@ -619,6 +620,31 @@ private struct AppearanceView: View {
                 }
             } header: {
                 Text("Dock Icons")
+            }
+
+            Section {
+                Toggle("Show notification badges", isOn: $store.appearance.showBadges)
+                    .onChange(of: store.appearance.showBadges) { _, enabled in
+                        if enabled && !badges.isTrusted { badges.requestPermission() }
+                    }
+                if store.appearance.showBadges && !badges.isTrusted {
+                    HStack {
+                        Label("Dockyard needs Accessibility access to read badges from the Dock.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button("Open Settings…") { badges.openAccessibilitySettings() }
+                    }
+                }
+            } header: {
+                Text("Notifications")
+            } footer: {
+                Text("Shows apps’ red badge counts on their icons in folder popups, and the total on nested folders.")
+                    .foregroundStyle(.secondary)
+            }
+            .onAppear { badges.refreshTrust() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                badges.refreshTrust()
             }
 
             Section("General") {

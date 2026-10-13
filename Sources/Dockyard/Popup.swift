@@ -96,6 +96,7 @@ final class PopupController {
         panel.orderFrontRegardless()
         panel.makeKey()
         installMonitors()
+        BadgeMonitor.shared.start()
         DispatchQueue.main.async {
             withAnimation(self.store.appearance.animationSpeed.open) { self.model.shown = true }
         }
@@ -109,6 +110,7 @@ final class PopupController {
 
     func close() {
         removeMonitors()
+        BadgeMonitor.shared.stop()
         guard panel?.isVisible == true else { return }
         let duration = store.appearance.animationSpeed.closeDuration
         withAnimation(duration > 0 ? .easeIn(duration: duration) : nil) { model.shown = false }
@@ -445,6 +447,7 @@ private struct HeaderButton: View {
 private struct ItemCell: View {
     let item: FolderItem
     @ObservedObject var store: Store
+    @ObservedObject private var badges = BadgeMonitor.shared
     let controller: PopupController
     let folderID: UUID
     let layout: PopupLayout
@@ -458,6 +461,13 @@ private struct ItemCell: View {
                 .interpolation(.high)
                 .frame(width: size, height: size)
                 .opacity(item.exists ? 1 : 0.4)
+                .overlay(alignment: .topTrailing) {
+                    if let badge = badgeText {
+                        // Sits on the corner of the visible icon (app icons have ~10% padding).
+                        NotificationBadge(text: badge, iconSize: size)
+                            .offset(x: size * 0.02, y: -size * 0.02)
+                    }
+                }
                 .scaleEffect(hovering ? 1.06 : 1)
             if store.appearance.showLabels {
                 Text(store.displayName(for: item))
@@ -486,6 +496,13 @@ private struct ItemCell: View {
             }
             Button("Remove from Folder") { store.removeItems([item.id], from: folderID) }
         }
+    }
+
+    private var badgeText: String? {
+        if let linkID = item.linkedFolderID {
+            return store.folder(linkID).flatMap(badges.total(for:))
+        }
+        return item.path.flatMap(badges.label(forPath:))
     }
 
     private var icon: Image {
