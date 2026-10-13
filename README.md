@@ -13,13 +13,8 @@ iOS-style folders for the macOS Dock. Group apps, files, folders and disks into 
 
 1. Download `Dockyard-<version>.zip` from the [latest release](https://github.com/MaxiG0D/Dockyard/releases/latest) and unzip it.
 2. Move **Dockyard.app** to your Applications folder and open it.
-3. Dockyard isn't notarized by Apple (that needs a paid developer account), so macOS blocks the first launch.
-   Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to Dockyard.
-   Alternatively, in Terminal:
 
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/Dockyard.app
-   ```
+Dockyard is signed with a Developer ID and notarized by Apple, so it opens without security warnings.
 
 Requires macOS 14 Sonoma or later. Runs natively on Apple Silicon and Intel.
 
@@ -48,7 +43,7 @@ Requires macOS 14 Sonoma or later. Runs natively on Apple Silicon and Intel.
 ```bash
 ./build.sh            # builds build/Dockyard.app for this Mac
 ./build.sh --install  # also copies it to /Applications and launches it
-./release.sh          # universal (Apple Silicon + Intel) build, zipped into build/
+./release.sh          # universal, Developer ID-signed, notarized build, zipped into build/
 ```
 
 Requires Xcode (or its command line tools) with Swift 5.10+.
@@ -84,7 +79,13 @@ Bump `CFBundleShortVersionString` and `CFBundleVersion` in `Resources/Info.plist
 ./release.sh --publish
 ```
 
-This builds the universal app, tags `v<version>`, pushes, and creates a GitHub release with the zip attached.
+This builds the universal app, signs it with the Developer ID certificate, notarizes and staples it,
+tags `v<version>`, pushes, and creates a GitHub release with the zip attached. Notarization needs a
+keychain profile, created once with:
+
+```bash
+xcrun notarytool store-credentials dockyard --apple-id <your Apple ID> --team-id <your team ID>
+```
 
 ## License
 
