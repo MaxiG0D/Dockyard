@@ -597,6 +597,10 @@ private struct AppearanceView: View {
                 }
                 Toggle("Show item names", isOn: $store.appearance.showLabels)
                 Toggle("Show folder title", isOn: $store.appearance.showTitle)
+                Picker("Animation", selection: $store.appearance.animationSpeed) {
+                    ForEach(PopupAnimation.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
                 Toggle("Close after opening an item", isOn: $store.appearance.closeAfterOpening)
                 HStack {
                     Spacer()

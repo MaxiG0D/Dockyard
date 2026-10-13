@@ -57,6 +57,60 @@ enum PopupMaterial: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How the popup opens, closes and moves between nested folders.
+enum PopupAnimation: String, Codable, CaseIterable, Identifiable {
+    case relaxed, standard, fast, off
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .relaxed: "Relaxed"
+        case .standard: "Standard"
+        case .fast: "Fast"
+        case .off: "Off"
+        }
+    }
+
+    /// Opening spring; nil means no animation.
+    var open: Animation? {
+        switch self {
+        case .relaxed: .spring(response: 0.46, dampingFraction: 0.74)
+        case .standard: .spring(response: 0.34, dampingFraction: 0.76)
+        case .fast: .spring(response: 0.2, dampingFraction: 0.84)
+        case .off: nil
+        }
+    }
+
+    var closeDuration: Double {
+        switch self {
+        case .relaxed: 0.18
+        case .standard: 0.13
+        case .fast: 0.08
+        case .off: 0
+        }
+    }
+
+    /// Moving into and out of nested folders.
+    var navigation: Animation? {
+        switch self {
+        case .relaxed: .spring(response: 0.4, dampingFraction: 0.86)
+        case .standard: .spring(response: 0.32, dampingFraction: 0.86)
+        case .fast: .spring(response: 0.2, dampingFraction: 0.9)
+        case .off: nil
+        }
+    }
+
+    /// Size the popup grows from; starting larger makes it read as open sooner.
+    var startScale: CGFloat {
+        switch self {
+        case .relaxed, .standard: 0.2
+        case .fast: 0.55
+        case .off: 1
+        }
+    }
+}
+
 struct Appearance: Codable, Equatable {
     var iconSize: Double = 56
     var columns: Int = 4
@@ -67,6 +121,7 @@ struct Appearance: Codable, Equatable {
     var cornerRadius: Double = 24
     var closeAfterOpening = true
     var iconShowsContents = true
+    var animationSpeed: PopupAnimation = .standard
     var dockBadge = true
 
     init() {}
@@ -85,6 +140,7 @@ struct Appearance: Codable, Equatable {
         closeAfterOpening = try c.decodeIfPresent(Bool.self, forKey: .closeAfterOpening) ?? d.closeAfterOpening
         iconShowsContents = try c.decodeIfPresent(Bool.self, forKey: .iconShowsContents) ?? d.iconShowsContents
         dockBadge = try c.decodeIfPresent(Bool.self, forKey: .dockBadge) ?? d.dockBadge
+        animationSpeed = (try? c.decodeIfPresent(PopupAnimation.self, forKey: .animationSpeed)) ?? d.animationSpeed
     }
 
     private static let defaults = Appearance()

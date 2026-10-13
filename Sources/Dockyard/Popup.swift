@@ -97,7 +97,7 @@ final class PopupController {
         panel.makeKey()
         installMonitors()
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.76)) { self.model.shown = true }
+            withAnimation(self.store.appearance.animationSpeed.open) { self.model.shown = true }
         }
     }
 
@@ -110,8 +110,9 @@ final class PopupController {
     func close() {
         removeMonitors()
         guard panel?.isVisible == true else { return }
-        withAnimation(.easeIn(duration: 0.13)) { model.shown = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        let duration = store.appearance.animationSpeed.closeDuration
+        withAnimation(duration > 0 ? .easeIn(duration: duration) : nil) { model.shown = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.02) { [weak self] in
             guard let self, !self.model.shown else { return }
             self.panel?.orderOut(nil)
         }
@@ -135,14 +136,14 @@ final class PopupController {
     func navigate(to id: UUID) {
         guard store.folder(id) != nil else { return }
         model.navigatingForward = true
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { model.stack.append(id) }
+        withAnimation(store.appearance.animationSpeed.navigation) { model.stack.append(id) }
         resizeForCurrentFolder()
     }
 
     func goBack() {
         guard model.stack.count > 1 else { return }
         model.navigatingForward = false
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { _ = model.stack.removeLast() }
+        withAnimation(store.appearance.animationSpeed.navigation) { _ = model.stack.removeLast() }
         resizeForCurrentFolder()
     }
 
@@ -154,7 +155,7 @@ final class PopupController {
     private func resizeForCurrentFolder() {
         guard let panel else { return }
         let frame = frame(for: contentSize())
-        panel.setFrame(frame, display: true, animate: true)
+        panel.setFrame(frame, display: true, animate: store.appearance.animationSpeed != .off)
         model.anchor = unitAnchor(in: frame)
     }
 
@@ -318,7 +319,7 @@ struct PopupRootView: View {
         .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
         .environment(\.colorScheme, store.appearance.material == .hud ? .dark : colorSchemeFromSystem)
         .padding(PopupController.margin)
-        .scaleEffect(model.shown ? 1 : 0.2, anchor: model.anchor)
+        .scaleEffect(model.shown ? 1 : store.appearance.animationSpeed.startScale, anchor: model.anchor)
         .opacity(model.shown ? 1 : 0)
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             guard let id = model.current else { return false }
