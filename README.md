@@ -2,6 +2,13 @@
 
 iOS-style folders for the macOS Dock. Group apps, files, folders and disks into Dock icons that pop open as a grid — free and open source.
 
+![A Dockyard folder springing open above the Dock](docs/screenshots/hero.png)
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" width="54%" alt="Dockyard settings: folders, items, colors and icons">
+  <img src="docs/screenshots/dark-glass.png" width="42%" alt="A folder popup with the Dark Glass background">
+</p>
+
 ## Install
 
 1. Download `Dockyard-<version>.zip` from the [latest release](https://github.com/MaxiG0D/Dockyard/releases/latest) and unzip it.

@@ -7,7 +7,11 @@ final class Store: ObservableObject {
     static let shared = Store()
 
     nonisolated static var supportURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        // Development: run against separate data (e.g. a demo set for screenshots).
+        if let override = ProcessInfo.processInfo.environment["DOCKYARD_SUPPORT_DIR"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Dockyard", isDirectory: true)
     }
     private static var dataURL: URL { supportURL.appendingPathComponent("folders.json") }

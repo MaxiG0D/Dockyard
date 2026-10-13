@@ -61,6 +61,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             PopupController.shared.showAtMouse(id)
         case "settings":
             openSettings(selecting: id)
+        case "show" where ProcessInfo.processInfo.environment["DOCKYARD_DEMO"] != nil:
+            // Development: open a popup at an exact point, e.g. for screenshots.
+            // dockyard://show?id=<uuid>&x=<pt>&y=<pt>&edge=bottom|left|right|top
+            let value = { (name: String) in query.first { $0.name == name }?.value }
+            let point = CGPoint(x: Double(value("x") ?? "") ?? 0, y: Double(value("y") ?? "") ?? 0)
+            let edge: PopupEdge = switch value("edge") {
+            case "left": .left
+            case "right": .right
+            case "top": .top
+            default: .bottom
+            }
+            if let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) ?? NSScreen.main {
+                PopupController.shared.show(id, anchor: point, edge: edge, screen: screen)
+            }
         default:
             break
         }
