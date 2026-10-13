@@ -7,6 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 ARCH_FLAGS=()
+PLUGIN_ARCHS=("$(uname -m)")
 INSTALL=0
 IDENTITY="${DOCKYARD_SIGN_IDENTITY:-Developer ID Application: MAXIME GARIEPY (NZN9M2VV5J)}"
 # Sign local builds with the Developer ID when it's installed: permissions macOS grants
@@ -19,7 +20,7 @@ else
 fi
 for arg in "$@"; do
     case "$arg" in
-        --universal) ARCH_FLAGS=(--arch arm64 --arch x86_64) ;;
+        --universal) ARCH_FLAGS=(--arch arm64 --arch x86_64); PLUGIN_ARCHS=(arm64 x86_64) ;;
         --install) INSTALL=1 ;;
         --developer-id) DEVELOPER_ID=1 ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
@@ -42,10 +43,24 @@ STAGED="$STAGE/Dockyard.app"
 mkdir -p "$STAGED/Contents/MacOS" "$STAGED/Contents/Helpers" "$STAGED/Contents/Resources"
 cp "$BIN/Dockyard" "$STAGED/Contents/MacOS/Dockyard"
 cp "$BIN/DockyardStub" "$STAGED/Contents/Helpers/DockyardStub"
+
+# Dock tile plugin (copied into every folder bundle for Dock badges). It must be a Mach-O
+# bundle, which SwiftPM can't produce, so build it with swiftc per architecture.
+PLUGIN="$STAGED/Contents/PlugIns/DockyardTile.docktileplugin"
+mkdir -p "$PLUGIN/Contents/MacOS"
+SLICES=()
+for arch in "${PLUGIN_ARCHS[@]}"; do
+    swiftc -O -parse-as-library -module-name DockyardTile -target "$arch-apple-macos14.0" \
+        Plugin/DockyardTile.swift -Xlinker -bundle -o "$STAGE/DockyardTile-$arch"
+    SLICES+=("$STAGE/DockyardTile-$arch")
+done
+lipo -create "${SLICES[@]}" -output "$PLUGIN/Contents/MacOS/DockyardTile"
+cp Plugin/Info.plist "$PLUGIN/Contents/Info.plist"
 cp Resources/Info.plist "$STAGED/Contents/Info.plist"
 "$STAGED/Contents/MacOS/Dockyard" --render-app-icon "$STAGED/Contents/Resources/AppIcon.icns"
 xattr -cr "$STAGED"
 codesign "${SIGN_FLAGS[@]}" "$STAGED/Contents/Helpers/DockyardStub"
+codesign "${SIGN_FLAGS[@]}" "$PLUGIN"
 codesign "${SIGN_FLAGS[@]}" "$STAGED"
 codesign --verify --strict "$STAGED"
 

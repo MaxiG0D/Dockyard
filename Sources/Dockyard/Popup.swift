@@ -96,7 +96,7 @@ final class PopupController {
         panel.orderFrontRegardless()
         panel.makeKey()
         installMonitors()
-        BadgeMonitor.shared.start()
+        BadgeMonitor.shared.popupDidOpen()
         DispatchQueue.main.async {
             withAnimation(self.store.appearance.animationSpeed.open) { self.model.shown = true }
         }
@@ -110,7 +110,7 @@ final class PopupController {
 
     func close() {
         removeMonitors()
-        BadgeMonitor.shared.stop()
+        BadgeMonitor.shared.popupDidClose()
         guard panel?.isVisible == true else { return }
         let duration = store.appearance.animationSpeed.closeDuration
         withAnimation(duration > 0 ? .easeIn(duration: duration) : nil) { model.shown = false }
@@ -500,7 +500,7 @@ private struct ItemCell: View {
 
     private var badgeText: String? {
         if let linkID = item.linkedFolderID {
-            return store.folder(linkID).flatMap(badges.total(for:))
+            return store.folder(linkID).flatMap { badges.total(for: $0) }
         }
         return item.path.flatMap(badges.label(forPath:))
     }

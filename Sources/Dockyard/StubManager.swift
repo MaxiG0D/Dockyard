@@ -34,9 +34,20 @@ enum StubManager {
         return candidates.compactMap { $0 }.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
-    private static let stubBinaryHash: String? = stubBinary
-        .flatMap { try? Data(contentsOf: $0) }
-        .map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
+    private static let stubBinaryHash: String? = stubBinary.flatMap(sha256)
+
+    /// The Dock tile plugin shipped inside Dockyard.app; it gives folder tiles a badge.
+    static var tilePlugin: URL? {
+        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/PlugIns/DockyardTile.docktileplugin")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    private static let tilePluginHash: String? = tilePlugin
+        .flatMap { sha256(of: $0.appendingPathComponent("Contents/MacOS/DockyardTile")) }
+
+    private static func sha256(of url: URL) -> String? {
+        (try? Data(contentsOf: url)).map { SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined() }
+    }
 
     /// Brings the folder's bundle up to date and returns its location.
     @discardableResult
@@ -80,6 +91,23 @@ enum StubManager {
             NSLog("Dockyard: launcher binary not found; build with build.sh")
         }
 
+        // Dock tile plugin, kept signed as shipped (signing the folder bundle doesn't touch it).
+        let plugInsDir = contents.appendingPathComponent("PlugIns", isDirectory: true)
+        let installedPlugin = plugInsDir.appendingPathComponent("DockyardTile.docktileplugin")
+        let pluginMarker = resources.appendingPathComponent("tileplugin.sha256")
+        if let source = tilePlugin, let hash = tilePluginHash,
+           !fm.fileExists(atPath: installedPlugin.path) || (try? String(contentsOf: pluginMarker, encoding: .utf8)) != hash {
+            try? fm.createDirectory(at: plugInsDir, withIntermediateDirectories: true)
+            try? fm.removeItem(at: installedPlugin)
+            do {
+                try fm.copyItem(at: source, to: installedPlugin)
+                try hash.write(to: pluginMarker, atomically: true, encoding: .utf8)
+                needsSigning = true
+            } catch {
+                NSLog("Dockyard: could not copy Dock tile plugin: \(error)")
+            }
+        }
+
         let plistURL = contents.appendingPathComponent("Info.plist")
         if let data = try? PropertyListSerialization.data(fromPropertyList: infoPlist(for: folder), format: .xml, options: 0),
            (try? Data(contentsOf: plistURL)) != data {
@@ -91,29 +119,90 @@ enum StubManager {
             IconRenderer.drawFolder(folder, in: rect, showsContents: showsContents, badge: badge, resolver: resolver, depth: 0)
         }
 
-        if needsSigning {
-            // codesign refuses bundles carrying a custom icon or Finder metadata, so strip them first.
+        // The icon lives only in the bundle's icns. A Finder custom icon would be simpler, but it
+        // breaks the code signature, and the Dock won't load the tile plugin of an unsigned bundle.
+        let icnsURL = resources.appendingPathComponent("AppIcon.icns")
+        let rendered = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".icns")
+        if (try? IconRenderer.writeICNS(to: rendered, draw: draw)) != nil,
+           let data = try? Data(contentsOf: rendered), (try? Data(contentsOf: icnsURL)) != data {
+            try? data.write(to: icnsURL)
+            needsSigning = true
+        }
+        try? fm.removeItem(at: rendered)
+
+        // Earlier versions set a Finder custom icon; drop it so the signature can be valid.
+        if fm.fileExists(atPath: app.appendingPathComponent("Icon\r").path) {
             NSWorkspace.shared.setIcon(nil, forFile: app.path, options: [])
-            run("/usr/bin/xattr", ["-cr", app.path])
-            try? IconRenderer.writeICNS(to: resources.appendingPathComponent("AppIcon.icns"), draw: draw)
-            run("/usr/bin/codesign", ["--force", "--sign", "-", app.path])
-        } else {
-            // Keep the bundled icon current too, for anything that ignores custom icons.
-            try? IconRenderer.writeICNS(to: resources.appendingPathComponent("AppIcon.icns"), draw: draw)
+            needsSigning = true
         }
 
-        // A custom icon is what the Dock and Finder pick up when contents or color change.
-        NSWorkspace.shared.setIcon(IconRenderer.iconImage(draw: draw), forFile: app.path, options: [])
-        try? fm.setAttributes([.modificationDate: Date()], ofItemAtPath: app.path)
+        if needsSigning {
+            run("/usr/bin/xattr", ["-cr", app.path]) // codesign rejects Finder metadata
+            run("/usr/bin/codesign", ["--force", "--sign", "-", app.path])
+            try? fm.setAttributes([.modificationDate: Date()], ofItemAtPath: app.path)
+        }
+        if needsSigning {
+            // The Dock only loads tile plugins of bundles macOS has seen launch with their current
+            // signature, so launch the folder once in the background; then refresh its tile icon.
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = false
+            configuration.addsToRecentItems = false
+            configuration.arguments = ["--register"]
+            let id = folder.id.uuidString
+            NSWorkspace.shared.openApplication(at: app, configuration: configuration) { _, _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    DistributedNotificationCenter.default().postNotificationName(
+                        NSNotification.Name("com.maxgariepy.Dockyard.tileIcon"), object: id,
+                        userInfo: nil, deliverImmediately: true)
+                }
+            }
+        }
         LSRegisterURL(app as CFURL, true)
         return app
     }
 
     static func remove(_ id: UUID) {
+        if let bundle = existingBundle(for: id) { unregister(bundle) }
         try? FileManager.default.removeItem(at: directory(for: id))
     }
 
+    /// Removes folder bundles that shouldn't be around: those of deleted folders, and frozen
+    /// copies earlier versions left in SwiftUI's drag cache (macOS kept them registered, so the
+    /// Dock could resolve a tile to a copy without the tile plugin).
+    static func cleanUp(keeping ids: Set<UUID>) {
+        let fm = FileManager.default
+        for dir in (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
+            guard let id = UUID(uuidString: dir.lastPathComponent), !ids.contains(id) else { continue }
+            remove(id)
+        }
+
+        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        for dir in (try? fm.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil)) ?? []
+        where dir.lastPathComponent.hasPrefix("com.apple.SwiftUI.Drag-") {
+            let contents = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+            let copies = contents.filter {
+                $0.pathExtension == "app"
+                    && (Bundle(url: $0)?.bundleIdentifier ?? "").hasPrefix("com.maxgariepy.Dockyard.folder.")
+            }
+            guard !copies.isEmpty else { continue }
+            copies.forEach(unregister)
+            copies.forEach { try? fm.removeItem(at: $0) }
+            if copies.count == contents.count { try? fm.removeItem(at: dir) }
+        }
+    }
+
+    private static func unregister(_ bundle: URL) {
+        run("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+            ["-u", bundle.path])
+    }
+
     private static func infoPlist(for folder: DockFolder) -> [String: Any] {
+        var plist = basePlist(for: folder)
+        if tilePlugin != nil { plist["NSDockTilePlugIn"] = "DockyardTile.docktileplugin" }
+        return plist
+    }
+
+    private static func basePlist(for folder: DockFolder) -> [String: Any] {
         [
             "CFBundleExecutable": "DockyardStub",
             "CFBundleIdentifier": "com.maxgariepy.Dockyard.folder.\(folder.id.uuidString)",
@@ -202,6 +291,8 @@ enum DockPrefs {
     private static func tileData(id: UUID, url: URL, label: String) -> [String: Any] {
         [
             "bundle-identifier": bundlePrefix + id.uuidString,
+            // Tells the Dock this tile has a tile plugin (it caches this per tile).
+            "dock-extra": 1,
             "file-data": ["_CFURLString": url.absoluteString, "_CFURLStringType": 15],
             "file-label": label,
             "file-type": 41,
@@ -220,6 +311,28 @@ enum DockPrefs {
             guard let id = folderID(of: entry), let target = targets[id] else { return entry }
             var updated = entry
             updated["tile-data"] = tileData(id: id, url: target.url, label: target.label)
+            return updated
+        }
+        write(apps)
+    }
+
+    /// Folder tiles added before the tile plugin existed, which the Dock won't load it for.
+    static func folderIDsMissingTilePlugin() -> Set<UUID> {
+        Set(persistentApps().compactMap { entry in
+            guard let id = folderID(of: entry) else { return nil }
+            let extra = (entry["tile-data"] as? [String: Any])?["dock-extra"] as? Int ?? 0
+            return extra == 1 ? nil : id
+        })
+    }
+
+    /// Marks folder tiles as having a tile plugin; takes effect when the Dock restarts.
+    static func enableTilePlugin(for ids: Set<UUID>) {
+        let apps = persistentApps().map { entry -> [String: Any] in
+            guard let id = folderID(of: entry), ids.contains(id), var tile = entry["tile-data"] as? [String: Any]
+            else { return entry }
+            tile["dock-extra"] = 1
+            var updated = entry
+            updated["tile-data"] = tile
             return updated
         }
         write(apps)

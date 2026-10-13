@@ -23,11 +23,14 @@ final class Store: ObservableObject {
             if appearance.iconShowsContents != oldValue.iconShowsContents || appearance.dockBadge != oldValue.dockBadge {
                 forceIconSync = true
             }
+            if appearance.showBadges != oldValue.showBadges { BadgeMonitor.shared.update() }
             scheduleFlush()
         }
     }
     /// Folders currently pinned in the Dock.
-    @Published private(set) var dockFolderIDs: Set<UUID> = []
+    @Published private(set) var dockFolderIDs: Set<UUID> = [] {
+        didSet { if dockFolderIDs != oldValue { BadgeMonitor.shared.update() } }
+    }
     /// Folders in the Dock whose label changed and need "Update Dock".
     @Published private(set) var staleDockFolderIDs: Set<UUID> = []
 
@@ -60,6 +63,7 @@ final class Store: ObservableObject {
             folders = Self.sampleFolders()
         }
         loaded = true
+        StubManager.cleanUp(keeping: Set(folders.map(\.id)))
         refreshDockState()
         forceIconSync = true
         flush()

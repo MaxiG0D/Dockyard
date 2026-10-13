@@ -56,6 +56,10 @@ final class StubDelegate: NSObject, NSApplicationDelegate {
 }
 
 
+// `--register`: Dockyard launches a folder once after re-signing it, so macOS trusts the new
+// signature and the Dock will load the folder's tile plugin. Nothing to do beyond launching.
+if CommandLine.arguments.contains("--register") { exit(0) }
+
 // Fast path: if Dockyard is running, tell it to open the folder right away, before AppKit
 // finishes starting up (that alone takes ~60 ms). Dropped files still follow via forward().
 let info = Bundle.main.infoDictionary ?? [:]

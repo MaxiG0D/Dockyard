@@ -36,6 +36,8 @@ Requires macOS 14 Sonoma or later. Runs natively on Apple Silicon and Intel.
 - Popup appearance: Liquid Glass, dark glass, popover, menu or solid background; icon size, columns, rows,
   labels, corner radius, close-after-open
 - Custom folder icons and colors, with an optional Dockyard badge
+- Notification badges: apps' unread counts on their icons in popups, and a real red badge with the
+  total on each folder in the Dock (needs Accessibility access, requested on first use)
 - Menu bar menu to open any folder; launch at login
 
 ## Build from source
@@ -58,6 +60,10 @@ Requires Xcode (or its command line tools) with Swift 5.10+.
   Dockyard shows a popup panel next to the Dock icon, springing out of it.
 - **Dropping files on the Dock icon** opens them "with" the stub, which forwards
   `dockyard://add?id=…&path=…` so they're added to the folder.
+- **Dock badges and live icons** come from a Dock tile plugin (`Plugin/DockyardTile.swift`) inside each
+  folder bundle. The Dock loads it for the folder's tile even though the folder app isn't running; Dockyard
+  reads apps' badges from the Dock's accessibility tree and sends each folder's total (and icon changes) to
+  its plugin as distributed notifications.
 - **Add to Dock** writes a tile to `com.apple.dock persistent-apps` and restarts the Dock.
   Renaming a folder that's already in the Dock is applied with **Update Dock**, since the Dock stores
   each tile's path and label.
@@ -69,7 +75,9 @@ Requires Xcode (or its command line tools) with Swift 5.10+.
 | `Sources/Dockyard/IconRenderer.swift` | Folder icon drawing, badge, `.icns` output |
 | `Sources/Dockyard/Popup.swift` | Popup panel, positioning, grid UI |
 | `Sources/Dockyard/SettingsView.swift` | Settings window (folders, items, icon picker, appearance) |
+| `Sources/Dockyard/BadgeMonitor.swift` | Reads apps' badges from the Dock; feeds popups and folder tiles |
 | `Sources/DockyardStub/main.swift` | The launcher inside every folder bundle |
+| `Plugin/DockyardTile.swift` | Dock tile plugin in every folder bundle: badge totals and live icon updates |
 
 ## Releasing
 

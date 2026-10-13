@@ -37,6 +37,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         statusItem = item
 
         if store.isFirstRun { openSettings(selecting: nil) }
+
+        // Folder tiles added before Dockyard had a Dock tile plugin don't load it until the Dock
+        // is told the tile has one and restarts. One-time fix-up; new tiles are written correctly.
+        if StubManager.tilePlugin != nil {
+            let missing = DockPrefs.folderIDsMissingTilePlugin()
+            if !missing.isEmpty {
+                DockPrefs.enableTilePlugin(for: missing)
+                DockPrefs.restartDock()
+            }
+        }
+        BadgeMonitor.shared.update()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
