@@ -92,8 +92,10 @@ Bump `CFBundleShortVersionString` and `CFBundleVersion` in `Resources/Info.plist
 This builds the universal app, signs it with the Developer ID certificate, notarizes and staples it,
 signs the zip for Sparkle and writes `appcast.xml`, tags `v<version>`, pushes, and creates a GitHub
 release with the zip and appcast attached. Installed copies find the update through
-`releases/latest/download/appcast.xml`. Put release notes for the update window in
-`ReleaseNotes/<version>.html` (otherwise Sparkle links to the GitHub release page).
+`releases/latest/download/appcast.xml`. Write the release notes first:
+`ReleaseNotes/<version>.md` for the GitHub release page and `ReleaseNotes/<version>.html` for the
+update window. To fix the notes of a published release, edit those files and run
+`./release.sh --update-notes`.
 
 Sparkle verifies updates with an EdDSA key whose private half lives in the Keychain (account
 `dockyard`, created with `.build/artifacts/sparkle/Sparkle/bin/generate_keys --account dockyard`).
