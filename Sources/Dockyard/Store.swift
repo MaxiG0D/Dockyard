@@ -69,6 +69,13 @@ final class Store: ObservableObject {
         flush()
     }
 
+    /// Re-renders every folder's icon, e.g. after the system appearance changes.
+    func redrawIcons() {
+        guard loaded else { return }
+        forceIconSync = true
+        flush()
+    }
+
     private func scheduleFlush() {
         guard loaded else { return }
         pendingFlush?.cancel()

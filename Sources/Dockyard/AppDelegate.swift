@@ -26,6 +26,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             MainActor.assumeIsolated { PopupController.shared.toggle(folderID: id) }
         }
 
+        // App icons inside folder icons are drawn in the system's current icon style, so redraw
+        // folder icons when it changes. (Each bundle carries both a light and a dark icon.)
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main
+        ) { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                MainActor.assumeIsolated { Store.shared.redrawIcons() }
+            }
+        }
+
         NSApp.setActivationPolicy(.accessory)
         NSApp.mainMenu = makeMainMenu()
 
@@ -44,7 +54,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             let missing = DockPrefs.folderIDsMissingTilePlugin()
             if !missing.isEmpty {
                 DockPrefs.enableTilePlugin(for: missing)
-                DockPrefs.restartDock()
+            }
+            // After an update, folder tiles keep running the old plugin until the Dock restarts.
+            let updated = StubManager.replacedTilePlugin.intersection(store.dockFolderIDs)
+            StubManager.replacedTilePlugin.removeAll()
+            if !missing.isEmpty || !updated.isEmpty {
+                // Give the folders' background launches (which let the Dock trust them) time to finish.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { DockPrefs.restartDock() }
             }
         }
         BadgeMonitor.shared.update()

@@ -42,6 +42,10 @@ enum StubManager {
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// Folders whose tile plugin was replaced since launch. The Dock keeps running the plugin
+    /// it loaded until it restarts.
+    static var replacedTilePlugin: Set<UUID> = []
+
     private static let tilePluginHash: String? = tilePlugin
         .flatMap { sha256(of: $0.appendingPathComponent("Contents/MacOS/DockyardTile")) }
 
@@ -103,6 +107,7 @@ enum StubManager {
                 try fm.copyItem(at: source, to: installedPlugin)
                 try hash.write(to: pluginMarker, atomically: true, encoding: .utf8)
                 needsSigning = true
+                replacedTilePlugin.insert(folder.id)
             } catch {
                 NSLog("Dockyard: could not copy Dock tile plugin: \(error)")
             }
@@ -121,14 +126,35 @@ enum StubManager {
 
         // The icon lives only in the bundle's icns. A Finder custom icon would be simpler, but it
         // breaks the code signature, and the Dock won't load the tile plugin of an unsigned bundle.
-        let icnsURL = resources.appendingPathComponent("AppIcon.icns")
-        let rendered = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".icns")
-        if (try? IconRenderer.writeICNS(to: rendered, draw: draw)) != nil,
-           let data = try? Data(contentsOf: rendered), (try? Data(contentsOf: icnsURL)) != data {
-            try? data.write(to: icnsURL)
-            needsSigning = true
+        // AppIcon-Dark.icns is the dark variant; the tile plugin shows it when icons are dark.
+        for (name, dark) in [("AppIcon", false), ("AppIcon-Dark", true)] {
+            let icnsURL = resources.appendingPathComponent(name + ".icns")
+            let rendered = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".icns")
+            if (try? IconRenderer.writeICNS(to: rendered, dark: dark, draw: draw)) != nil,
+               let data = try? Data(contentsOf: rendered), (try? Data(contentsOf: icnsURL)) != data {
+                try? data.write(to: icnsURL)
+                needsSigning = true
+            }
+            try? fm.removeItem(at: rendered)
         }
-        try? fm.removeItem(at: rendered)
+
+        // The tile plugin draws folders that use an app's (or file's) own icon live, so the Dock
+        // shows that icon in the system's current style; this is the badge it lays on top.
+        let wantsBadgeLayer = badge && IconRenderer.ownIconPath(of: folder) != nil
+        for (name, dark) in [("Badge", false), ("Badge-Dark", true)] {
+            let url = resources.appendingPathComponent(name + ".png")
+            if wantsBadgeLayer {
+                let data = IconRenderer.bitmap(pixels: 1024, dark: dark) { IconRenderer.drawBadgeLayer(folder, in: $0) }?
+                    .representation(using: .png, properties: [:])
+                if let data, (try? Data(contentsOf: url)) != data {
+                    try? data.write(to: url)
+                    needsSigning = true
+                }
+            } else if fm.fileExists(atPath: url.path) {
+                try? fm.removeItem(at: url)
+                needsSigning = true
+            }
+        }
 
         // Earlier versions set a Finder custom icon; drop it so the signature can be valid.
         if fm.fileExists(atPath: app.appendingPathComponent("Icon\r").path) {
@@ -199,6 +225,7 @@ enum StubManager {
     private static func infoPlist(for folder: DockFolder) -> [String: Any] {
         var plist = basePlist(for: folder)
         if tilePlugin != nil { plist["NSDockTilePlugIn"] = "DockyardTile.docktileplugin" }
+        if let path = IconRenderer.ownIconPath(of: folder) { plist["DYIconPath"] = path }
         return plist
     }
 

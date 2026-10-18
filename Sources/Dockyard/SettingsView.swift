@@ -94,6 +94,8 @@ struct FolderIconView: View {
     let size: CGFloat
     /// Whether to draw the Dockyard badge (when enabled), so previews match the Dock.
     var showsBadge = false
+    /// Read so the preview is redrawn, in the dark icon style, when the appearance changes.
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Image(nsImage: IconRenderer.folderImage(folder, size: max(size * 2, 64),

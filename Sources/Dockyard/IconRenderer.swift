@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 /// Draws folder icons: a rounded, tinted tile showing a 3×3 grid of the folder's contents,
 /// using the same padding as macOS app icons so it sits naturally next to them in the Dock.
+/// In a dark drawing appearance, tiles follow Apple's dark icon style: a near-black tile with
+/// the folder's color carried by the glyph instead of the background.
 enum IconRenderer {
     typealias Resolver = (UUID) -> DockFolder?
 
@@ -21,6 +23,7 @@ enum IconRenderer {
         let body = rect.insetBy(dx: s * 100 / 1024, dy: s * 100 / 1024)
         let base = NSColor(hex: folder.colorHex) ?? .systemBlue
         let icon = folder.icon ?? (showsContents ? .contents : .symbol(defaultGlyph))
+        let dark = drawsDark
 
         switch icon {
         case .image(let path) where usesOwnIcon(path):
@@ -38,7 +41,7 @@ enum IconRenderer {
         case .symbol(let name):
             drawTile(in: body, color: base, scale: s, shadow: depth == 0)
             drawRim(in: body, scale: s)
-            drawGlyph(name, in: body)
+            drawGlyph(name, in: body, color: dark ? glyphColor(for: base) : .white)
         case .emoji(let emoji):
             drawTile(in: body, color: base, scale: s, shadow: depth == 0)
             drawRim(in: body, scale: s)
@@ -47,18 +50,42 @@ enum IconRenderer {
             drawTile(in: body, color: base, scale: s, shadow: depth == 0)
             drawRim(in: body, scale: s)
             if folder.items.isEmpty {
-                drawGlyph(defaultGlyph, in: body)
+                drawGlyph(defaultGlyph, in: body, color: dark ? glyphColor(for: base) : .white)
             } else {
                 drawContents(folder.items, in: body, showsContents: showsContents, resolver: resolver, depth: depth)
             }
         }
 
         if badge, depth == 0 {
-            drawBadge(color: base, body: body, scale: s)
+            drawBadge(color: base, body: body, scale: s, dark: dark)
         }
     }
 
     static let defaultGlyph = "square.grid.2x2.fill"
+
+    /// The app, folder or document whose own icon the folder uses, if any.
+    static func ownIconPath(of folder: DockFolder) -> String? {
+        if case .image(let path) = folder.icon, usesOwnIcon(path) { return path }
+        return nil
+    }
+
+    /// Just the Dockyard badge, positioned as on a full folder icon of this size.
+    static func drawBadgeLayer(_ folder: DockFolder, in rect: CGRect) {
+        let s = rect.width
+        drawBadge(color: NSColor(hex: folder.colorHex) ?? .systemBlue,
+                  body: rect.insetBy(dx: s * 100 / 1024, dy: s * 100 / 1024), scale: s, dark: drawsDark)
+    }
+
+    /// Whether the current drawing appearance is dark (set by `bitmap(pixels:dark:draw:)`
+    /// for Dock icons, or by AppKit for images drawn on screen).
+    private static var drawsDark: Bool {
+        NSAppearance.currentDrawing().bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    /// The folder's color, lifted a little so it stays vivid on a dark tile.
+    private static func glyphColor(for base: NSColor) -> NSColor {
+        base.blended(withFraction: 0.2, of: .white) ?? base
+    }
 
     /// Everything except picture files (apps, folders, documents, .icns) supplies its own
     /// Finder icon instead of being drawn as a picture filling the tile.
@@ -94,8 +121,15 @@ enum IconRenderer {
         path.fill()
         NSGraphicsContext.restoreGraphicsState()
 
-        let top = base.blended(withFraction: 0.3, of: .white) ?? base
-        let bottom = base.blended(withFraction: 0.15, of: .black) ?? base
+        let top: NSColor, bottom: NSColor
+        if drawsDark {
+            // Like Apple's dark icons: charcoal with a faint hint of the folder's color.
+            top = NSColor(white: 0.2, alpha: 1).blended(withFraction: 0.05, of: base) ?? base
+            bottom = NSColor(white: 0.07, alpha: 1).blended(withFraction: 0.03, of: base) ?? base
+        } else {
+            top = base.blended(withFraction: 0.3, of: .white) ?? base
+            bottom = base.blended(withFraction: 0.15, of: .black) ?? base
+        }
         NSGradient(starting: top, ending: bottom)?.draw(in: path, angle: -90)
     }
 
@@ -107,7 +141,7 @@ enum IconRenderer {
         let inset = s * 0.006
         let rim = squircle(body.insetBy(dx: inset, dy: inset), radius: radius - inset)
         rim.lineWidth = s * 0.012
-        NSColor.white.withAlphaComponent(0.28).setStroke()
+        NSColor.white.withAlphaComponent(drawsDark ? 0.14 : 0.28).setStroke()
         rim.stroke()
         NSGraphicsContext.restoreGraphicsState()
     }
@@ -134,9 +168,9 @@ enum IconRenderer {
         }
     }
 
-    private static func drawGlyph(_ name: String, in body: CGRect) {
+    private static func drawGlyph(_ name: String, in body: CGRect, color: NSColor) {
         let config = NSImage.SymbolConfiguration(pointSize: body.width * 0.38, weight: .semibold)
-            .applying(.init(paletteColors: [.white]))
+            .applying(.init(paletteColors: [color]))
         guard let symbol = (NSImage(systemSymbolName: name, accessibilityDescription: nil)
                             ?? NSImage(systemSymbolName: defaultGlyph, accessibilityDescription: nil))?
             .withSymbolConfiguration(config) else { return }
@@ -151,8 +185,9 @@ enum IconRenderer {
         text.draw(at: CGPoint(x: body.midX - size.width / 2, y: body.midY - size.height / 2))
     }
 
-    /// The Dockyard mark: a white disc with the grid glyph, tucked into the bottom-right corner.
-    private static func drawBadge(color: NSColor, body: CGRect, scale s: CGFloat) {
+    /// The Dockyard mark: a white (or, in dark icons, charcoal) disc with the grid glyph,
+    /// tucked into the bottom-right corner.
+    private static func drawBadge(color: NSColor, body: CGRect, scale s: CGFloat, dark: Bool) {
         let diameter = body.width * 0.36
         let center = CGPoint(x: body.maxX - diameter * 0.34, y: body.minY + diameter * 0.34)
         let disc = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)
@@ -163,7 +198,7 @@ enum IconRenderer {
         shadow.shadowBlurRadius = s * 0.02
         shadow.shadowOffset = NSSize(width: 0, height: -s * 0.008)
         shadow.set()
-        NSColor.white.setFill()
+        (dark ? NSColor(white: 0.17, alpha: 1) : .white).setFill()
         NSBezierPath(ovalIn: disc).fill()
         NSGraphicsContext.restoreGraphicsState()
 
@@ -172,7 +207,7 @@ enum IconRenderer {
         color.withAlphaComponent(0.35).setStroke()
         ring.stroke()
 
-        let ink = color.blended(withFraction: 0.1, of: .black) ?? color
+        let ink = dark ? glyphColor(for: color) : color.blended(withFraction: 0.1, of: .black) ?? color
         let config = NSImage.SymbolConfiguration(pointSize: diameter * 0.42, weight: .bold)
             .applying(.init(paletteColors: [ink]))
         if let glyph = NSImage(systemSymbolName: defaultGlyph, accessibilityDescription: nil)?.withSymbolConfiguration(config) {
@@ -197,7 +232,8 @@ enum IconRenderer {
 
     // MARK: - Bitmaps
 
-    static func bitmap(pixels: Int, draw: (CGRect) -> Void) -> NSBitmapImageRep? {
+    /// Draws into a bitmap in a light or dark appearance, whatever the app's own appearance is.
+    static func bitmap(pixels: Int, dark: Bool = false, draw: (CGRect) -> Void) -> NSBitmapImageRep? {
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pixels, pixelsHigh: pixels,
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
@@ -206,7 +242,9 @@ enum IconRenderer {
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
         NSGraphicsContext.current?.imageInterpolation = .high
-        draw(CGRect(x: 0, y: 0, width: pixels, height: pixels))
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            draw(CGRect(x: 0, y: 0, width: pixels, height: pixels))
+        }
         NSGraphicsContext.restoreGraphicsState()
         return rep
     }
@@ -223,12 +261,12 @@ enum IconRenderer {
         return image
     }
 
-    static func writeICNS(to url: URL, draw: (CGRect) -> Void) throws {
+    static func writeICNS(to url: URL, dark: Bool = false, draw: (CGRect) -> Void) throws {
         let sizes = [16, 32, 64, 128, 256, 512, 1024]
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.icns.identifier as CFString, sizes.count, nil)
         else { throw CocoaError(.fileWriteUnknown) }
         for pixels in sizes {
-            if let image = bitmap(pixels: pixels, draw: draw)?.cgImage {
+            if let image = bitmap(pixels: pixels, dark: dark, draw: draw)?.cgImage {
                 CGImageDestinationAddImage(destination, image, nil)
             }
         }
