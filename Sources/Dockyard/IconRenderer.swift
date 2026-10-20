@@ -304,9 +304,15 @@ enum IconCache {
         return image
     }
 
+    /// Also drops AppKit's own icons for these files: it keeps serving an app's old icon after
+    /// the app is rebuilt (e.g. one that gained a dark variant) until it's told the file changed.
     static func clear() {
         lock.lock()
+        let paths = cache.keys.filter { !$0.hasPrefix("image:") }
         cache.removeAll()
         lock.unlock()
+        for path in paths {
+            NSWorkspace.shared.noteFileSystemChanged(URL(fileURLWithPath: path).resolvingSymlinksInPath().path)
+        }
     }
 }
